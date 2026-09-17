@@ -1,0 +1,6 @@
+{
+  "name": "Sati International - Water Purifiers & Spare Parts",
+  "description": "Online catalog, instant WhatsApp & Gmail orders, and doorstep repair service for water purifiers and spare parts across Birganj, Raxaul, Laxmipur Noniyadih, Bettiah, Motihari, and Sugauli.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
