@@ -22,6 +22,7 @@ interface EditProductModalProps {
   onClose: () => void;
   onSaveProduct: (updatedProduct: Product) => void;
   onDeleteProduct: (productId: string) => void;
+  sessionToken?: string | null;
 }
 
 export const EditProductModal: React.FC<EditProductModalProps> = ({
@@ -30,6 +31,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   onClose,
   onSaveProduct,
   onDeleteProduct,
+  sessionToken,
 }) => {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('filters');
@@ -44,6 +46,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [imageStats, setImageStats] = useState<ImageOptimizationResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [savedToFolder, setSavedToFolder] = useState(false);
 
   useEffect(() => {
     if (product) {
@@ -59,6 +62,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
       setBadge(product.badge || '');
       setImageStats(null);
       setUploadError(null);
+      setSavedToFolder(Boolean(product.image && product.image.startsWith('/images/')));
     }
   }, [product]);
 
@@ -71,6 +75,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
     setIsProcessingImage(true);
     setUploadError(null);
     setImageStats(null);
+    setSavedToFolder(false);
 
     try {
       const result = await optimizeImageFile(file, {
@@ -82,6 +87,29 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
       setImagePreview(result.dataUrl);
       setImageUrl(result.dataUrl);
       setImageStats(result);
+
+      // Save directly into website main folder (/public/images/products/)
+      if (sessionToken) {
+        try {
+          const res = await fetch('/api/upload-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: result.dataUrl,
+              filenameHint: file.name,
+              token: sessionToken,
+            }),
+          });
+          const data = await res.json();
+          if (data.success && data.url) {
+            setImageUrl(data.url);
+            setImagePreview(data.url);
+            setSavedToFolder(true);
+          }
+        } catch (serverErr) {
+          console.warn('Direct upload error (will be saved during catalog sync):', serverErr);
+        }
+      }
     } catch (err: any) {
       console.error('Error optimizing image:', err);
       setUploadError(err.message || 'Failed to process image. Please try another file.');
@@ -97,6 +125,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
     setImagePreview(converted);
     setImageStats(null);
     setUploadError(null);
+    setSavedToFolder(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -112,7 +141,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
       category,
       price: Number(price) || 0,
       originalPrice: Number(originalPrice) || undefined,
-      image: imagePreview || product.image,
+      image: imageUrl || imagePreview || product.image,
       description: description.trim(),
       specs: {
         ...product.specs,
@@ -249,6 +278,21 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 </div>
                 <span className="text-[10px] bg-emerald-900/60 text-emerald-200 px-2 py-0.5 rounded-full font-bold">
                   HD Ready
+                </span>
+              </div>
+            )}
+
+            {/* Saved to Website Folder Confirmation */}
+            {savedToFolder && (
+              <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-700/50 flex items-center justify-between text-xs text-cyan-300">
+                <div className="flex items-center gap-2 truncate">
+                  <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="truncate font-mono text-[11px]">
+                    Main Folder: {imageUrl.replace('/images/products/', 'public/images/products/')}
+                  </span>
+                </div>
+                <span className="text-[10px] bg-cyan-900/90 text-cyan-200 px-2 py-0.5 rounded font-bold uppercase shrink-0">
+                  Ready For Deploy
                 </span>
               </div>
             )}

@@ -8,7 +8,9 @@ import {
   Wrench,
   CheckCircle2,
   KeyRound,
-  LogOut
+  LogOut,
+  HardDrive,
+  FolderCheck
 } from 'lucide-react';
 import { Product, ProductCategory, ServiceArea } from '../types';
 import { ProductCard } from './ProductCard';
@@ -27,6 +29,7 @@ interface ProductCatalogProps {
   onResetDefaultProducts?: () => void;
   onOpenChangePasscode?: () => void;
   onExitHostMode?: () => void;
+  onSyncToMainFolder?: () => void;
 }
 
 const CATEGORIES: { id: ProductCategory; label: string }[] = [
@@ -53,6 +56,7 @@ export const ProductCatalog: React.FC<ProductCatalogProps> = ({
   onResetDefaultProducts,
   onOpenChangePasscode,
   onExitHostMode,
+  onSyncToMainFolder,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,6 +109,18 @@ export const ProductCatalog: React.FC<ProductCatalogProps> = ({
                 <PlusCircle className="w-3.5 h-3.5" />
                 <span>+ Add Product &amp; Photo</span>
               </button>
+
+              {onSyncToMainFolder && (
+                <button
+                  type="button"
+                  onClick={onSyncToMainFolder}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition-colors"
+                  title="Persist all product changes, texts, prices, and photos to main website folder (public/images/products & public/data/products.json) for deploy"
+                >
+                  <HardDrive className="w-3.5 h-3.5" />
+                  <span>Sync to Main Folder</span>
+                </button>
+              )}
 
               {onOpenChangePasscode && (
                 <button

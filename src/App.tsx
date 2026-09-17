@@ -84,7 +84,26 @@ export default function App() {
         console.warn('Host session verification check failed:', err);
       }
     };
+
+    const loadProductsFromMainFolder = async () => {
+      try {
+        const res = await fetch('/api/products');
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data.success && Array.isArray(data.products) && data.products.length > 0) {
+            setProducts(data.products);
+            try {
+              localStorage.setItem('sati_products_catalog', JSON.stringify(data.products));
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load products from server:', err);
+      }
+    };
+
     verifySession();
+    loadProductsFromMainFolder();
     return () => {
       isMounted = false;
     };
@@ -249,8 +268,46 @@ export default function App() {
     showToast('Your order details are prepared for WhatsApp/Gmail dispatch!');
   };
 
-  const handleAddProduct = (newProduct: Product) => {
-    setProducts((prev) => [newProduct, ...prev]);
+  // Syncs products and image assets directly to the website main folder (/public/images/products and /public/data/products.json)
+  const syncProductsToMainFolder = async (productsToSave: Product[]) => {
+    if (!hostSessionToken) return null;
+    try {
+      const res = await fetch('/api/save-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          products: productsToSave,
+          token: hostSessionToken,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.products)) {
+        setProducts(data.products);
+        try {
+          localStorage.setItem('sati_products_catalog', JSON.stringify(data.products));
+        } catch (e) {}
+        return data.products;
+      }
+    } catch (err) {
+      console.warn('Sync to website main folder failed:', err);
+    }
+    return null;
+  };
+
+  const handleAddProduct = async (newProduct: Product) => {
+    const nextProducts = [newProduct, ...products];
+    setProducts(nextProducts);
+    try {
+      localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
+    } catch (e) {}
+
+    if (hostSessionToken) {
+      const saved = await syncProductsToMainFolder(nextProducts);
+      if (saved) {
+        showToast(`"${newProduct.name}" and photo saved directly to website main folder for deploy!`);
+        return;
+      }
+    }
     showToast(`"${newProduct.name}" added to catalog successfully!`);
   };
 
@@ -290,23 +347,67 @@ export default function App() {
     setEditProductModalOpen(true);
   };
 
-  const handleSaveEditedProduct = (updatedProduct: Product) => {
-    setProducts((prev) =>
-      prev.map((item) => (item.id === updatedProduct.id ? updatedProduct : item))
+  const handleSaveEditedProduct = async (updatedProduct: Product) => {
+    const nextProducts = products.map((item) =>
+      item.id === updatedProduct.id ? updatedProduct : item
     );
+    setProducts(nextProducts);
+    try {
+      localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
+    } catch (e) {}
+
+    if (hostSessionToken) {
+      const saved = await syncProductsToMainFolder(nextProducts);
+      if (saved) {
+        showToast(`"${updatedProduct.name}" changes & photo saved to website main folder for deploy!`);
+        return;
+      }
+    }
     showToast(`Updated "${updatedProduct.name}" photo and price tag successfully!`);
   };
 
-  const handleDeleteProduct = (productId: string) => {
-    setProducts((prev) => prev.filter((item) => item.id !== productId));
+  const handleDeleteProduct = async (productId: string) => {
+    const nextProducts = products.filter((item) => item.id !== productId);
+    setProducts(nextProducts);
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    try {
+      localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
+    } catch (e) {}
+
+    if (hostSessionToken) {
+      await syncProductsToMainFolder(nextProducts);
+      showToast('Product and photo removed from catalog and website main folder.');
+      return;
+    }
     showToast('Product and photo removed from catalog.');
   };
 
-  const handleResetDefaultProducts = () => {
+  const handleResetDefaultProducts = async () => {
     if (window.confirm('Reset all catalog items, photos, and price tags back to the official Sati International inventory?')) {
       setProducts(INITIAL_PRODUCTS);
-      showToast('Catalog restored to default products.');
+      try {
+        localStorage.setItem('sati_products_catalog', JSON.stringify(INITIAL_PRODUCTS));
+      } catch (e) {}
+
+      if (hostSessionToken) {
+        await syncProductsToMainFolder(INITIAL_PRODUCTS);
+        showToast('Catalog restored and saved to website main folder.');
+      } else {
+        showToast('Catalog restored to default products.');
+      }
+    }
+  };
+
+  const handleSyncToMainFolder = async () => {
+    if (!hostSessionToken) {
+      showToast('Please enter Host Mode to sync catalog to website folder.');
+      return;
+    }
+    const saved = await syncProductsToMainFolder(products);
+    if (saved) {
+      showToast('All product texts, photos, and price tags saved to website main folder! Ready for deploy.');
+    } else {
+      showToast('Failed to save to main folder. Check connection.');
     }
   };
 
@@ -382,6 +483,7 @@ export default function App() {
         onResetDefaultProducts={handleResetDefaultProducts}
         onOpenChangePasscode={() => setChangeHostCodeModalOpen(true)}
         onExitHostMode={handleExitHostMode}
+        onSyncToMainFolder={handleSyncToMainFolder}
       />
 
       {/* Dedicated Separate Repair Section with Photo Upload & 1-Click Dispatch */}
@@ -432,6 +534,7 @@ export default function App() {
         isOpen={addProductOpen}
         onClose={() => setAddProductOpen(false)}
         onAddProduct={handleAddProduct}
+        sessionToken={hostSessionToken}
       />
 
       {/* Host Edit Product Modal (Image & Price Tag Management) */}
@@ -444,6 +547,7 @@ export default function App() {
         }}
         onSaveProduct={handleSaveEditedProduct}
         onDeleteProduct={handleDeleteProduct}
+        sessionToken={hostSessionToken}
       />
 
       {/* 20-Digit Host Security Authentication Modal */}

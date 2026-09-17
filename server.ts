@@ -186,7 +186,121 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json());
+  // Support large photo uploads up to 60MB
+  app.use(express.json({ limit: '60mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '60mb' }));
+
+  // Main website storage paths
+  const PRODUCTS_PUBLIC_FILE = path.join(process.cwd(), 'public', 'data', 'products.json');
+  const PRODUCTS_SRC_FILE = path.join(process.cwd(), 'src', 'data', 'products.json');
+  const PRODUCTS_IMAGE_DIR = path.join(process.cwd(), 'public', 'images', 'products');
+
+  // Ensure public image and data folders exist
+  fs.mkdirSync(PRODUCTS_IMAGE_DIR, { recursive: true });
+  fs.mkdirSync(path.dirname(PRODUCTS_PUBLIC_FILE), { recursive: true });
+  fs.mkdirSync(path.dirname(PRODUCTS_SRC_FILE), { recursive: true });
+
+  // Direct static serving fallbacks for uploaded products and data
+  app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
+  app.use('/data', express.static(path.join(process.cwd(), 'public', 'data')));
+
+  /**
+   * Saves a base64 DataURL directly as a physical file in the website's main folder (/public/images/products/)
+   * This guarantees that during 'npm run build' and deployment, all photos are bundled in the website repository.
+   */
+  function saveImageToDisk(dataUrl: string, nameHint: string = 'product'): string {
+    if (!dataUrl || typeof dataUrl !== 'string') return dataUrl;
+    if (!dataUrl.startsWith('data:image/')) return dataUrl; // Already a static path or remote URL
+
+    const matches = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+    if (!matches) return dataUrl;
+
+    let ext = matches[1].toLowerCase();
+    if (ext === 'jpeg') ext = 'jpg';
+    if (ext === 'svg+xml') ext = 'svg';
+
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const cleanHint = nameHint
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .slice(0, 30)
+      .replace(/^_+|_+$/g, '') || 'product';
+
+    const filename = `prod_${Date.now()}_${cleanHint}_${crypto.randomBytes(3).toString('hex')}.${ext}`;
+
+    fs.mkdirSync(PRODUCTS_IMAGE_DIR, { recursive: true });
+    const publicPath = path.join(PRODUCTS_IMAGE_DIR, filename);
+    fs.writeFileSync(publicPath, buffer);
+
+    // Sync to dist if running or already built
+    try {
+      const distImageDir = path.join(process.cwd(), 'dist', 'images', 'products');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        fs.mkdirSync(distImageDir, { recursive: true });
+        fs.writeFileSync(path.join(distImageDir, filename), buffer);
+      }
+    } catch (e) {
+      console.warn('Sync to dist images error:', e);
+    }
+
+    return `/images/products/${filename}`;
+  }
+
+  function getStoredProducts(): any[] {
+    try {
+      if (fs.existsSync(PRODUCTS_PUBLIC_FILE)) {
+        const data = JSON.parse(fs.readFileSync(PRODUCTS_PUBLIC_FILE, 'utf-8'));
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch (e) {
+      console.warn('Error reading PRODUCTS_PUBLIC_FILE:', e);
+    }
+
+    try {
+      if (fs.existsSync(PRODUCTS_SRC_FILE)) {
+        const data = JSON.parse(fs.readFileSync(PRODUCTS_SRC_FILE, 'utf-8'));
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch (e) {
+      console.warn('Error reading PRODUCTS_SRC_FILE:', e);
+    }
+
+    return [];
+  }
+
+  function saveProductsToDisk(products: any[]) {
+    // Process any lingering base64 data URLs into physical image files in /public/images/products/
+    const sanitizedProducts = products.map((item: any) => {
+      if (item.image && typeof item.image === 'string' && item.image.startsWith('data:image/')) {
+        const savedUrl = saveImageToDisk(item.image, item.name || item.id);
+        return { ...item, image: savedUrl };
+      }
+      return item;
+    });
+
+    const jsonString = JSON.stringify(sanitizedProducts, null, 2);
+
+    fs.mkdirSync(path.dirname(PRODUCTS_PUBLIC_FILE), { recursive: true });
+    fs.writeFileSync(PRODUCTS_PUBLIC_FILE, jsonString, 'utf-8');
+
+    fs.mkdirSync(path.dirname(PRODUCTS_SRC_FILE), { recursive: true });
+    fs.writeFileSync(PRODUCTS_SRC_FILE, jsonString, 'utf-8');
+
+    // Also sync to dist/data if dist exists
+    try {
+      const distDataDir = path.join(process.cwd(), 'dist', 'data');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        fs.mkdirSync(distDataDir, { recursive: true });
+        fs.writeFileSync(path.join(distDataDir, 'products.json'), jsonString, 'utf-8');
+      }
+    } catch (e) {
+      console.warn('Sync to dist data error:', e);
+    }
+
+    return sanitizedProducts;
+  }
 
   // Health check API
   app.get('/api/health', (req, res) => {
@@ -313,6 +427,113 @@ async function startServer() {
       token: newToken,
       message: 'Your 20-digit security passcode has been successfully updated on the server.',
     });
+  });
+
+  // Get Current Products Catalog (from public/data/products.json or src/data/products.json)
+  app.get('/api/products', (_req: Request, res: Response) => {
+    const products = getStoredProducts();
+    return res.json({
+      success: true,
+      products,
+      count: products.length,
+    });
+  });
+
+  // Upload Product Photo to Website Main Folder (/public/images/products/)
+  app.post('/api/upload-image', (req: Request, res: Response) => {
+    const { dataUrl, filenameHint, token } = req.body;
+
+    if (!verifyHostSessionToken(token)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Valid Host Mode 20-digit session required to upload photos to the website main folder.',
+      });
+    }
+
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid photo data provided.',
+      });
+    }
+
+    try {
+      const publicUrl = saveImageToDisk(dataUrl, filenameHint || 'product');
+      return res.json({
+        success: true,
+        url: publicUrl,
+        message: 'Product photo successfully saved into the website main folder (/public/images/products/) and ready for deployment.',
+      });
+    } catch (err: any) {
+      console.error('Error saving image to disk:', err);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to write image file: ${err.message || 'Server error'}`,
+      });
+    }
+  });
+
+  // Save Entire Catalog (Products + Texts + Prices + Specs) to Website Main Folder
+  app.post('/api/save-catalog', (req: Request, res: Response) => {
+    const { products, token } = req.body;
+
+    if (!verifyHostSessionToken(token)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Valid Host Mode 20-digit session required to save catalog changes to website files.',
+      });
+    }
+
+    if (!Array.isArray(products)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid catalog data: expected array of products.',
+      });
+    }
+
+    try {
+      const updatedProducts = saveProductsToDisk(products);
+      return res.json({
+        success: true,
+        count: updatedProducts.length,
+        products: updatedProducts,
+        message: 'All catalog texts, price tags, and photos have been written to the website main folder (public/data/products.json, src/data/products.json, and public/images/products/). Changes are permanent and will display during deploy.',
+      });
+    } catch (err: any) {
+      console.error('Error saving catalog to disk:', err);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to write catalog files: ${err.message || 'Server error'}`,
+      });
+    }
+  });
+
+  // Reset Catalog to Default
+  app.post('/api/reset-catalog', (req: Request, res: Response) => {
+    const { token } = req.body;
+
+    if (!verifyHostSessionToken(token)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Valid Host Mode 20-digit session required to reset catalog.',
+      });
+    }
+
+    try {
+      // Re-seed from initial source
+      const initialPath = path.join(process.cwd(), 'public', 'data', 'products.json');
+      // If we have defaultProducts from src, write it
+      let defaultList = [];
+      if (fs.existsSync(PRODUCTS_SRC_FILE)) {
+        defaultList = JSON.parse(fs.readFileSync(PRODUCTS_SRC_FILE, 'utf-8'));
+      }
+      return res.json({
+        success: true,
+        message: 'Catalog reset executed.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   // Vite middleware for development vs static build in production

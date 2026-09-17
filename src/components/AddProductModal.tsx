@@ -20,12 +20,14 @@ interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddProduct: (newProduct: Product) => void;
+  sessionToken?: string | null;
 }
 
 export const AddProductModal: React.FC<AddProductModalProps> = ({
   isOpen,
   onClose,
   onAddProduct,
+  sessionToken,
 }) => {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('filters');
@@ -40,10 +42,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [imageStats, setImageStats] = useState<ImageOptimizationResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [savedToFolder, setSavedToFolder] = useState(false);
 
   if (!isOpen) return null;
 
-  // Handle local file upload with support for large high-res images up to 50MB (e.g. 30MB camera photos)
+  // Handle local file upload with direct persistence to website's main folder (/public/images/products/)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -51,6 +54,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     setIsProcessingImage(true);
     setUploadError(null);
     setImageStats(null);
+    setSavedToFolder(false);
 
     try {
       const result = await optimizeImageFile(file, {
@@ -71,12 +75,34 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           .replace(/\b\w/g, (l) => l.toUpperCase());
         setName(`Sati ${cleanName}`);
       }
+
+      // Immediately write image file to website main folder (/public/images/products/)
+      if (sessionToken) {
+        try {
+          const res = await fetch('/api/upload-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: result.dataUrl,
+              filenameHint: file.name,
+              token: sessionToken,
+            }),
+          });
+          const data = await res.json();
+          if (data.success && data.url) {
+            setImageUrl(data.url);
+            setImagePreview(data.url);
+            setSavedToFolder(true);
+          }
+        } catch (serverErr) {
+          console.warn('Direct upload warning (will be saved during catalog sync):', serverErr);
+        }
+      }
     } catch (err: any) {
       console.error('Error optimizing image:', err);
       setUploadError(err.message || 'Failed to process image. Please try another file.');
     } finally {
       setIsProcessingImage(false);
-      // Reset input value so same file can be re-selected if needed
       e.target.value = '';
     }
   };
@@ -88,6 +114,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     setImagePreview(converted);
     setImageStats(null);
     setUploadError(null);
+    setSavedToFolder(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -103,7 +130,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       category: (category as ProductCategory) || 'filters',
       price: Number(price) || 500,
       originalPrice: Number(originalPrice) || Number(price) * 1.3,
-      image: imagePreview || '/images/purifier.jpg',
+      image: imageUrl || imagePreview || '/images/purifier.jpg',
       description: description.trim() || `High quality ${name} distributed by Sati International with doorstep installation and genuine parts warranty.`,
       specs: {
         brand: brand.trim() || 'Sati International',
@@ -256,6 +283,21 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 >
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+            )}
+
+            {/* Saved to Website Folder Badge */}
+            {savedToFolder && (
+              <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-700/50 flex items-center justify-between text-xs text-cyan-300">
+                <div className="flex items-center gap-2 truncate">
+                  <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="truncate font-mono text-[11px]">
+                    Main Folder: {imageUrl.replace('/images/products/', 'public/images/products/')}
+                  </span>
+                </div>
+                <span className="text-[10px] bg-cyan-900/90 text-cyan-200 px-2 py-0.5 rounded font-bold uppercase shrink-0">
+                  Ready For Deploy
+                </span>
               </div>
             )}
           </div>
