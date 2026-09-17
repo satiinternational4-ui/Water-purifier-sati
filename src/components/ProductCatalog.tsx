@@ -92,10 +92,10 @@ export const ProductCatalog: React.FC<ProductCatalogProps> = ({
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
               <div>
                 <span className="text-xs font-black text-amber-300 uppercase tracking-wider block">
-                  Host / Owner Management Active
+                  Host / Owner Management Active • Website Folders Attached
                 </span>
                 <p className="text-[11px] text-amber-200/80">
-                  You can now add products with photos, edit price tags, or remove items directly from the catalog.
+                  Every photo and product edit is saved directly to <span className="font-mono text-cyan-300">public/data/products.json</span> and <span className="font-mono text-cyan-300">public/images/products/</span> so changes show to everyone upon deploy and publishing.
                 </p>
               </div>
             </div>

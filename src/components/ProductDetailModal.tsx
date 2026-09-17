@@ -67,6 +67,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 alt={product.name}
                 referrerPolicy="no-referrer"
                 className="w-full h-72 object-cover rounded-xl"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/images/purifier.jpg';
+                }}
               />
               <div className="absolute bottom-4 left-4">
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-950/90 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5 shadow">

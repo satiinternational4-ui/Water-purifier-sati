@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
+import { exec } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 
 // Server-side secret 20-digit passcode configuration
@@ -200,9 +201,20 @@ async function startServer() {
   fs.mkdirSync(path.dirname(PRODUCTS_PUBLIC_FILE), { recursive: true });
   fs.mkdirSync(path.dirname(PRODUCTS_SRC_FILE), { recursive: true });
 
-  // Direct static serving fallbacks for uploaded products and data
-  app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
-  app.use('/data', express.static(path.join(process.cwd(), 'public', 'data')));
+  // Direct static serving with no-cache for live data and instant images
+  app.use('/data', (req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    next();
+  }, express.static(path.join(process.cwd(), 'public', 'data')));
+
+  app.use('/images', (req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    next();
+  }, express.static(path.join(process.cwd(), 'public', 'images')));
 
   /**
    * Saves a base64 DataURL directly as a physical file in the website's main folder (/public/images/products/)
@@ -234,13 +246,11 @@ async function startServer() {
     const publicPath = path.join(PRODUCTS_IMAGE_DIR, filename);
     fs.writeFileSync(publicPath, buffer);
 
-    // Sync to dist if running or already built
+    // Sync to dist if running or already built so production serves it immediately
     try {
       const distImageDir = path.join(process.cwd(), 'dist', 'images', 'products');
-      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
-        fs.mkdirSync(distImageDir, { recursive: true });
-        fs.writeFileSync(path.join(distImageDir, filename), buffer);
-      }
+      fs.mkdirSync(distImageDir, { recursive: true });
+      fs.writeFileSync(path.join(distImageDir, filename), buffer);
     } catch (e) {
       console.warn('Sync to dist images error:', e);
     }
@@ -267,6 +277,16 @@ async function startServer() {
       console.warn('Error reading PRODUCTS_SRC_FILE:', e);
     }
 
+    try {
+      const distDataFile = path.join(process.cwd(), 'dist', 'data', 'products.json');
+      if (fs.existsSync(distDataFile)) {
+        const data = JSON.parse(fs.readFileSync(distDataFile, 'utf-8'));
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch (e) {
+      console.warn('Error reading dist products data:', e);
+    }
+
     return [];
   }
 
@@ -282,21 +302,34 @@ async function startServer() {
 
     const jsonString = JSON.stringify(sanitizedProducts, null, 2);
 
+    // 1. Write to public/data/products.json (source of truth for static serving & Vite preview)
     fs.mkdirSync(path.dirname(PRODUCTS_PUBLIC_FILE), { recursive: true });
     fs.writeFileSync(PRODUCTS_PUBLIC_FILE, jsonString, 'utf-8');
 
+    // 2. Write to src/data/products.json (so build and Vite bundler compiles it into dist JS)
     fs.mkdirSync(path.dirname(PRODUCTS_SRC_FILE), { recursive: true });
     fs.writeFileSync(PRODUCTS_SRC_FILE, jsonString, 'utf-8');
 
-    // Also sync to dist/data if dist exists
+    // 3. Write to dist/data/products.json (for immediate live production deployment)
     try {
       const distDataDir = path.join(process.cwd(), 'dist', 'data');
-      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
-        fs.mkdirSync(distDataDir, { recursive: true });
-        fs.writeFileSync(path.join(distDataDir, 'products.json'), jsonString, 'utf-8');
-      }
+      fs.mkdirSync(distDataDir, { recursive: true });
+      fs.writeFileSync(path.join(distDataDir, 'products.json'), jsonString, 'utf-8');
     } catch (e) {
       console.warn('Sync to dist data error:', e);
+    }
+
+    // 4. Trigger a non-blocking background build so dist/assets/ is always synchronized
+    try {
+      exec('npm run build', (err, stdout, stderr) => {
+        if (err) {
+          console.warn('Background build notification (non-fatal):', err.message);
+        } else {
+          console.log('Production assets rebuilt successfully with updated products & photos!');
+        }
+      });
+    } catch (buildErr) {
+      console.warn('Background build invocation error:', buildErr);
     }
 
     return sanitizedProducts;
@@ -431,6 +464,10 @@ async function startServer() {
 
   // Get Current Products Catalog (from public/data/products.json or src/data/products.json)
   app.get('/api/products', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const products = getStoredProducts();
     return res.json({
       success: true,
@@ -441,6 +478,8 @@ async function startServer() {
 
   // Upload Product Photo to Website Main Folder (/public/images/products/)
   app.post('/api/upload-image', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const { dataUrl, filenameHint, token } = req.body;
 
     if (!verifyHostSessionToken(token)) {
@@ -475,6 +514,8 @@ async function startServer() {
 
   // Save Entire Catalog (Products + Texts + Prices + Specs) to Website Main Folder
   app.post('/api/save-catalog', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const { products, token } = req.body;
 
     if (!verifyHostSessionToken(token)) {

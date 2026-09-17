@@ -86,26 +86,71 @@ export default function App() {
     };
 
     const loadProductsFromMainFolder = async () => {
+      const timestamp = Date.now();
+      let freshProducts: Product[] | null = null;
+
+      // 1. Try /api/products first with no-cache headers
       try {
-        const res = await fetch('/api/products');
+        const res = await fetch(`/api/products?t=${timestamp}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
+        });
         if (res.ok) {
           const data = await res.json();
           if (isMounted && data.success && Array.isArray(data.products) && data.products.length > 0) {
-            setProducts(data.products);
-            try {
-              localStorage.setItem('sati_products_catalog', JSON.stringify(data.products));
-            } catch (e) {}
+            freshProducts = data.products;
           }
         }
       } catch (err) {
-        console.warn('Could not load products from server:', err);
+        console.warn('Could not load products from /api/products, will try static file:', err);
+      }
+
+      // 2. Fallback to direct public folder static file /data/products.json
+      if (!freshProducts) {
+        try {
+          const resStatic = await fetch(`/data/products.json?t=${timestamp}`, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            },
+          });
+          if (resStatic.ok) {
+            const dataStatic = await resStatic.json();
+            if (isMounted && Array.isArray(dataStatic) && dataStatic.length > 0) {
+              freshProducts = dataStatic;
+            }
+          }
+        } catch (err) {
+          console.warn('Could not load static /data/products.json:', err);
+        }
+      }
+
+      if (isMounted && freshProducts && freshProducts.length > 0) {
+        setProducts(freshProducts);
+        try {
+          localStorage.setItem('sati_products_catalog', JSON.stringify(freshProducts));
+        } catch (e) {}
       }
     };
 
     verifySession();
     loadProductsFromMainFolder();
+
+    // Auto-sync catalog across all open tabs and devices every 20 seconds or when window gains focus
+    const handleWindowFocus = () => {
+      loadProductsFromMainFolder();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    const syncInterval = setInterval(loadProductsFromMainFolder, 20000);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('focus', handleWindowFocus);
+      clearInterval(syncInterval);
     };
   }, []);
 
@@ -270,14 +315,24 @@ export default function App() {
 
   // Syncs products and image assets directly to the website main folder (/public/images/products and /public/data/products.json)
   const syncProductsToMainFolder = async (productsToSave: Product[]) => {
-    if (!hostSessionToken) return null;
+    let token = hostSessionToken;
+    if (!token) {
+      token = localStorage.getItem('sati_host_session') || sessionStorage.getItem('sati_host_session');
+      if (token) setHostSessionToken(token);
+    }
+    if (!token) {
+      showToast('⚠️ Host authorization required: Please authenticate with your 20-digit code to save to website files.');
+      setHostAuthModalOpen(true);
+      return null;
+    }
+
     try {
       const res = await fetch('/api/save-catalog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           products: productsToSave,
-          token: hostSessionToken,
+          token,
         }),
       });
       const data = await res.json();
@@ -287,9 +342,15 @@ export default function App() {
           localStorage.setItem('sati_products_catalog', JSON.stringify(data.products));
         } catch (e) {}
         return data.products;
+      } else if (res.status === 401) {
+        showToast('⚠️ Host session expired. Please re-enter your 20-digit passcode.');
+        setHostAuthModalOpen(true);
+      } else {
+        showToast(`⚠️ Save warning: ${data.error || 'Server could not save to folder'}`);
       }
     } catch (err) {
       console.warn('Sync to website main folder failed:', err);
+      showToast('⚠️ Network error saving to website folder. Please check server.');
     }
     return null;
   };
@@ -301,14 +362,12 @@ export default function App() {
       localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
     } catch (e) {}
 
-    if (hostSessionToken) {
-      const saved = await syncProductsToMainFolder(nextProducts);
-      if (saved) {
-        showToast(`"${newProduct.name}" and photo saved directly to website main folder for deploy!`);
-        return;
-      }
+    const saved = await syncProductsToMainFolder(nextProducts);
+    if (saved) {
+      showToast(`✓ "${newProduct.name}" & photo permanently saved to website public folder! Ready for deploy.`);
+    } else {
+      showToast(`"${newProduct.name}" added to catalog.`);
     }
-    showToast(`"${newProduct.name}" added to catalog successfully!`);
   };
 
   // Host Mode Security Handlers
@@ -356,14 +415,12 @@ export default function App() {
       localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
     } catch (e) {}
 
-    if (hostSessionToken) {
-      const saved = await syncProductsToMainFolder(nextProducts);
-      if (saved) {
-        showToast(`"${updatedProduct.name}" changes & photo saved to website main folder for deploy!`);
-        return;
-      }
+    const saved = await syncProductsToMainFolder(nextProducts);
+    if (saved) {
+      showToast(`✓ "${updatedProduct.name}" updated in website public data & image folders! Ready for deploy.`);
+    } else {
+      showToast(`Updated "${updatedProduct.name}" photo and price tag.`);
     }
-    showToast(`Updated "${updatedProduct.name}" photo and price tag successfully!`);
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -374,12 +431,12 @@ export default function App() {
       localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
     } catch (e) {}
 
-    if (hostSessionToken) {
-      await syncProductsToMainFolder(nextProducts);
-      showToast('Product and photo removed from catalog and website main folder.');
-      return;
+    const saved = await syncProductsToMainFolder(nextProducts);
+    if (saved) {
+      showToast('✓ Product removed from website public folder & catalog permanently.');
+    } else {
+      showToast('Product and photo removed from catalog.');
     }
-    showToast('Product and photo removed from catalog.');
   };
 
   const handleResetDefaultProducts = async () => {
@@ -399,15 +456,10 @@ export default function App() {
   };
 
   const handleSyncToMainFolder = async () => {
-    if (!hostSessionToken) {
-      showToast('Please enter Host Mode to sync catalog to website folder.');
-      return;
-    }
+    showToast('Syncing all products, photos, and prices to website public folders...');
     const saved = await syncProductsToMainFolder(products);
     if (saved) {
-      showToast('All product texts, photos, and price tags saved to website main folder! Ready for deploy.');
-    } else {
-      showToast('Failed to save to main folder. Check connection.');
+      showToast('✓ All catalog items, photos, and prices saved to public/data & public/images! Ready for deploy.');
     }
   };
 
