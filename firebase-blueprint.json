@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A water purifier, spare part, or service item in the store catalog",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique product identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product display title"
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category: purifiers, parts, filters, or services"
+        },
+        "price": {
+          "type": "number",
+          "description": "Current selling price in INR"
+        },
+        "originalPrice": {
+          "type": "number",
+          "description": "Original retail/MRP price in INR"
+        },
+        "image": {
+          "type": "string",
+          "description": "Image URL or path"
+        },
+        "description": {
+          "type": "string",
+          "description": "Full product description and benefits"
+        },
+        "inStock": {
+          "type": "boolean",
+          "description": "Availability status"
+        },
+        "badge": {
+          "type": "string",
+          "description": "Optional badge label like Best Seller, Hot, etc."
+        },
+        "rating": {
+          "type": "number",
+          "description": "Star rating"
+        },
+        "reviewCount": {
+          "type": "number",
+          "description": "Total customer reviews"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["id", "name", "category", "price", "image", "inStock"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Store catalog items readable by all customers and editable by the store host"
+    }
+  }
+}

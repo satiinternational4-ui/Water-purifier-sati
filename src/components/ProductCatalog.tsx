@@ -92,10 +92,10 @@ export const ProductCatalog: React.FC<ProductCatalogProps> = ({
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
               <div>
                 <span className="text-xs font-black text-amber-300 uppercase tracking-wider block">
-                  Host / Owner Management Active • Website Folders Attached
+                  Host / Owner Management Active • Cloud Database & Website Folders Synced
                 </span>
                 <p className="text-[11px] text-amber-200/80">
-                  Every photo and product edit is saved directly to <span className="font-mono text-cyan-300">public/data/products.json</span> and <span className="font-mono text-cyan-300">public/images/products/</span> so changes show to everyone upon deploy and publishing.
+                  Every product edit, price tag, and photo is pushed live to <span className="font-semibold text-emerald-300">Firebase Cloud Firestore</span> (instant for all online phones/devices) and stored into <span className="font-mono text-cyan-300">public/data/</span> and <span className="font-mono text-cyan-300">public/images/</span>.
                 </p>
               </div>
             </div>

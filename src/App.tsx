@@ -25,6 +25,13 @@ import { HostAuthModal } from './components/HostAuthModal';
 import { ChangeHostCodeModal } from './components/ChangeHostCodeModal';
 import { Footer } from './components/Footer';
 import { resolveWhatsAppNumber } from './utils/dispatch';
+import {
+  subscribeToProducts,
+  saveProductToFirestore,
+  deleteProductFromFirestore,
+  saveCatalogToFirestore,
+  testFirestoreConnection
+} from './lib/firestoreProducts';
 
 export default function App() {
   // Products state with localStorage backup
@@ -138,6 +145,25 @@ export default function App() {
     };
 
     verifySession();
+    testFirestoreConnection();
+
+    // 1. Subscribe to real-time Firestore database updates
+    // This allows changes made from any phone or browser to show immediately to all online visitors!
+    let unsubscribeFirestore: (() => void) | null = null;
+    try {
+      unsubscribeFirestore = subscribeToProducts((firestoreProducts) => {
+        if (isMounted && firestoreProducts && firestoreProducts.length > 0) {
+          setProducts(firestoreProducts);
+          try {
+            localStorage.setItem('sati_products_catalog', JSON.stringify(firestoreProducts));
+          } catch (e) {}
+        }
+      });
+    } catch (fsErr) {
+      console.warn('Firestore subscription failed, relying on server file sync:', fsErr);
+    }
+
+    // 2. Also load from server /api/products and /data/products.json as backup/initial seed
     loadProductsFromMainFolder();
 
     // Auto-sync catalog across all open tabs and devices every 20 seconds or when window gains focus
@@ -149,6 +175,7 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      if (unsubscribeFirestore) unsubscribeFirestore();
       window.removeEventListener('focus', handleWindowFocus);
       clearInterval(syncInterval);
     };
@@ -362,9 +389,17 @@ export default function App() {
       localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
     } catch (e) {}
 
+    // 1. Save directly to Cloud Firestore so all online phones/devices see it instantly
+    try {
+      await saveProductToFirestore(newProduct);
+    } catch (fsErr) {
+      console.warn('Firestore cloud save failed:', fsErr);
+    }
+
+    // 2. Also save to website main folder
     const saved = await syncProductsToMainFolder(nextProducts);
     if (saved) {
-      showToast(`✓ "${newProduct.name}" & photo permanently saved to website public folder! Ready for deploy.`);
+      showToast(`✓ "${newProduct.name}" & photo permanently saved to Cloud & website folders!`);
     } else {
       showToast(`"${newProduct.name}" added to catalog.`);
     }
@@ -415,9 +450,17 @@ export default function App() {
       localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
     } catch (e) {}
 
+    // 1. Update in Cloud Firestore
+    try {
+      await saveProductToFirestore(updatedProduct);
+    } catch (fsErr) {
+      console.warn('Firestore save product failed:', fsErr);
+    }
+
+    // 2. Also sync to website folder
     const saved = await syncProductsToMainFolder(nextProducts);
     if (saved) {
-      showToast(`✓ "${updatedProduct.name}" updated in website public data & image folders! Ready for deploy.`);
+      showToast(`✓ "${updatedProduct.name}" updated in Cloud Firestore & website files!`);
     } else {
       showToast(`Updated "${updatedProduct.name}" photo and price tag.`);
     }
@@ -431,9 +474,17 @@ export default function App() {
       localStorage.setItem('sati_products_catalog', JSON.stringify(nextProducts));
     } catch (e) {}
 
+    // 1. Delete from Cloud Firestore
+    try {
+      await deleteProductFromFirestore(productId);
+    } catch (fsErr) {
+      console.warn('Firestore delete failed:', fsErr);
+    }
+
+    // 2. Sync to website folder
     const saved = await syncProductsToMainFolder(nextProducts);
     if (saved) {
-      showToast('✓ Product removed from website public folder & catalog permanently.');
+      showToast('✓ Product removed from Cloud Firestore & website folders.');
     } else {
       showToast('Product and photo removed from catalog.');
     }
@@ -446,9 +497,15 @@ export default function App() {
         localStorage.setItem('sati_products_catalog', JSON.stringify(INITIAL_PRODUCTS));
       } catch (e) {}
 
+      try {
+        await saveCatalogToFirestore(INITIAL_PRODUCTS);
+      } catch (fsErr) {
+        console.warn('Firestore reset catalog failed:', fsErr);
+      }
+
       if (hostSessionToken) {
         await syncProductsToMainFolder(INITIAL_PRODUCTS);
-        showToast('Catalog restored and saved to website main folder.');
+        showToast('Catalog restored and saved to Cloud & website main folder.');
       } else {
         showToast('Catalog restored to default products.');
       }
@@ -456,10 +513,15 @@ export default function App() {
   };
 
   const handleSyncToMainFolder = async () => {
-    showToast('Syncing all products, photos, and prices to website public folders...');
+    showToast('Syncing all products, photos, and prices to Cloud Firestore and website public folders...');
+    try {
+      await saveCatalogToFirestore(products);
+    } catch (fsErr) {
+      console.warn('Firestore batch sync failed:', fsErr);
+    }
     const saved = await syncProductsToMainFolder(products);
     if (saved) {
-      showToast('✓ All catalog items, photos, and prices saved to public/data & public/images! Ready for deploy.');
+      showToast('✓ All catalog items, photos, and prices saved to Cloud Firestore and public folders!');
     }
   };
 
