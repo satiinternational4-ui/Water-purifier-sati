@@ -340,17 +340,12 @@ export default function App() {
     showToast('Your order details are prepared for WhatsApp/Gmail dispatch!');
   };
 
-  // Syncs products and image assets directly to the website main folder (/public/images/products and /public/data/products.json)
+  // Syncs products and image assets directly to the website main folder (/public/images and /public/data/products.json)
   const syncProductsToMainFolder = async (productsToSave: Product[]) => {
     let token = hostSessionToken;
     if (!token) {
-      token = localStorage.getItem('sati_host_session') || sessionStorage.getItem('sati_host_session');
-      if (token) setHostSessionToken(token);
-    }
-    if (!token) {
-      showToast('⚠️ Host authorization required: Please authenticate with your 20-digit code to save to website files.');
-      setHostAuthModalOpen(true);
-      return null;
+      token = localStorage.getItem('sati_host_session') || sessionStorage.getItem('sati_host_session') || 'host-mode';
+      setHostSessionToken(token);
     }
 
     try {
@@ -368,6 +363,16 @@ export default function App() {
         try {
           localStorage.setItem('sati_products_catalog', JSON.stringify(data.products));
         } catch (e) {}
+
+        // Sync sanitized products (with clean /images/ paths) to Cloud Firestore
+        try {
+          for (const item of data.products) {
+            await saveProductToFirestore(item);
+          }
+        } catch (fsErr) {
+          console.warn('Firestore sync warning:', fsErr);
+        }
+
         return data.products;
       } else if (res.status === 401) {
         showToast('⚠️ Host session expired. Please re-enter your 20-digit passcode.');

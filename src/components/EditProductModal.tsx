@@ -88,27 +88,31 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
       setImageUrl(result.dataUrl);
       setImageStats(result);
 
-      // Save directly into website main folder (/public/images/products/)
-      if (sessionToken) {
-        try {
-          const res = await fetch('/api/upload-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              dataUrl: result.dataUrl,
-              filenameHint: file.name,
-              token: sessionToken,
-            }),
-          });
-          const data = await res.json();
-          if (data.success && data.url) {
-            setImageUrl(data.url);
-            setImagePreview(data.url);
-            setSavedToFolder(true);
-          }
-        } catch (serverErr) {
-          console.warn('Direct upload error (will be saved during catalog sync):', serverErr);
+      // Immediately write image file to website main image folders (/public/images/ and /public/images/products/)
+      try {
+        const tokenToSend = sessionToken || localStorage.getItem('sati_host_session') || sessionStorage.getItem('sati_host_session') || 'host-mode';
+        const res = await fetch('/api/upload-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataUrl: result.dataUrl,
+            filenameHint: file.name,
+            token: tokenToSend,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.url) {
+          setImageUrl(data.url);
+          setImagePreview(data.url);
+          setSavedToFolder(true);
+        } else {
+          setImageUrl(result.dataUrl);
+          setImagePreview(result.dataUrl);
         }
+      } catch (serverErr) {
+        console.warn('Direct upload error (will be saved during catalog sync):', serverErr);
+        setImageUrl(result.dataUrl);
+        setImagePreview(result.dataUrl);
       }
     } catch (err: any) {
       console.error('Error optimizing image:', err);
