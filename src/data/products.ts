@@ -20,5 +20,7 @@ export const SHOP_CONFIG: ShopContact = {
   hours: '10:00 AM – 7:00 PM (Monday to Sunday)',
 };
 
-export const INITIAL_PRODUCTS: Product[] = defaultProducts as Product[];
+export const INITIAL_PRODUCTS: Product[] = (defaultProducts as Product[]).map(p => ({ ...p }));
+export const ALL_PRODUCTS: Product[] = INITIAL_PRODUCTS;
+export { defaultProducts };
 
