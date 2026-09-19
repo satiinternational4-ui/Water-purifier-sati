@@ -139,37 +139,37 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               Technical Specifications & Compatibility
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-              {product.specs.brand && (
+              {product.specs?.brand && (
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Brand / Series</span>
                   <span className="font-semibold text-slate-200">{product.specs.brand}</span>
                 </div>
               )}
-              {product.specs.model && (
+              {product.specs?.model && (
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Model</span>
                   <span className="font-semibold text-slate-200">{product.specs.model}</span>
                 </div>
               )}
-              {product.specs.capacity && (
+              {product.specs?.capacity && (
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Capacity / Flow</span>
                   <span className="font-semibold text-slate-200">{product.specs.capacity}</span>
                 </div>
               )}
-              {product.specs.voltage && (
+              {product.specs?.voltage && (
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Voltage / Power</span>
                   <span className="font-semibold text-slate-200">{product.specs.voltage}</span>
                 </div>
               )}
-              {product.specs.warranty && (
+              {product.specs?.warranty && (
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Warranty</span>
                   <span className="font-semibold text-emerald-400">{product.specs.warranty}</span>
                 </div>
               )}
-              {product.specs.compatibility && (
+              {product.specs?.compatibility && (
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 sm:col-span-2">
                   <span className="text-slate-500 block text-[10px]">Compatibility</span>
                   <span className="font-semibold text-slate-200">{product.specs.compatibility}</span>

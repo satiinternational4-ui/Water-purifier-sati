@@ -371,7 +371,54 @@ async function startServer() {
       console.warn('Sync to dist data error:', e);
     }
 
-    console.log(`[CATALOG FILES WRITTEN] public/data/products.json & src/data/products.json (${sanitizedProducts.length} items)`);
+    // 4. Write full TypeScript array into src/data/products.ts with all titles, prices, descriptions, specs
+    try {
+      const tsContent = `import { Product, ShopContact } from '../types';
+import defaultProducts from './products.json';
+
+export const SHOP_CONFIG: ShopContact = {
+  name: 'Sati International',
+  tagline: 'Premium Water Purifiers, Genuine RO Spare Parts & Doorstep Repair Service',
+  phone: '+997 9804235755',
+  whatsappPhone: '+997 9804235755',
+  smsPhone: '9304643614',
+  email: 'satiinternational4@gmail.com',
+  address: 'Main Road, Raxaul - Birganj Border Region, Indo-Nepal Hub',
+  serviceAreas: [
+    'Birganj',
+    'Raxaul',
+    'Laxmipur Noniyadih',
+    'Bettiah',
+    'Motihari',
+    'Sugauli',
+  ],
+  hours: '10:00 AM – 7:00 PM (Monday to Sunday)',
+};
+
+export const ALL_PRODUCTS: Product[] = ${jsonString};
+
+export const INITIAL_PRODUCTS: Product[] = ALL_PRODUCTS;
+export { defaultProducts };
+export default ALL_PRODUCTS;
+`;
+      fs.writeFileSync(path.join(process.cwd(), 'src', 'data', 'products.ts'), tsContent, 'utf-8');
+    } catch (e) {
+      console.warn('Sync to products.ts error:', e);
+    }
+
+    // 5. Generate human-readable products.txt in public/data/ and src/data/
+    try {
+      let txtContent = `================================================================================\nSATI INTERNATIONAL - PRODUCT CATALOG & PRICE LIST\n================================================================================\n`;
+      sanitizedProducts.forEach((p: any, idx: number) => {
+        txtContent += `\n${idx + 1}. PRODUCT: ${p.name || ''}\n   - ID: ${p.id || ''}\n   - Category: ${p.category || ''}\n   - Selling Price: ₹${p.price || 0}\n   - MRP: ₹${p.originalPrice || p.price || 0}\n   - Rating: ${p.rating || 4.8} ★\n   - Image: ${p.image || ''}\n   - Brand: ${p.specs?.brand || ''}\n   - Warranty: ${p.specs?.warranty || ''}\n   - Description: ${p.description || ''}\n`;
+      });
+      fs.writeFileSync(path.join(process.cwd(), 'public', 'data', 'products.txt'), txtContent, 'utf-8');
+      fs.writeFileSync(path.join(process.cwd(), 'src', 'data', 'products.txt'), txtContent, 'utf-8');
+    } catch (e) {
+      console.warn('Sync to products.txt error:', e);
+    }
+
+    console.log(`[CATALOG FILES WRITTEN] JSON, TS, and TXT (${sanitizedProducts.length} items)`);
     return sanitizedProducts;
   }
 

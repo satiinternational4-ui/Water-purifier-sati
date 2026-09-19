@@ -149,23 +149,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             onClick={() => onViewDetails(product)}
             className="font-bold text-slate-100 text-sm leading-snug line-clamp-2 hover:text-cyan-400 transition-colors cursor-pointer min-h-[2.5rem]"
           >
-            {product.name}
+            {product.name || 'Water Purifier Part'}
           </h3>
 
           {/* Short Specs Pills */}
           <div className="mt-2.5 flex flex-wrap gap-1.5 text-[11px]">
-            {product.specs.warranty && (
+            {product.specs?.warranty && (
               <span className="px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700 text-slate-300 flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-cyan-400" />
                 {product.specs.warranty}
               </span>
             )}
-            {product.specs.capacity && (
+            {product.specs?.capacity && (
               <span className="px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700 text-slate-300">
                 {product.specs.capacity}
               </span>
             )}
-            {product.specs.voltage && (
+            {product.specs?.voltage && (
               <span className="px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700 text-slate-300">
                 {product.specs.voltage}
               </span>
@@ -178,9 +178,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <div className="flex items-baseline justify-between mb-3">
             <div>
               <div className="text-lg font-black text-white">
-                {formatCurrency(product.price)}
+                {product.price != null ? formatCurrency(product.price) : 'Contact for Price'}
               </div>
-              {product.originalPrice && (
+              {product.originalPrice && product.originalPrice > product.price && (
                 <div className="text-xs text-slate-500 line-through">
                   MRP {formatCurrency(product.originalPrice)}
                 </div>
